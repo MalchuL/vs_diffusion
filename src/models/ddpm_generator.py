@@ -98,11 +98,11 @@ class DDPMModule(pl.LightningModule):
         eps = torch.randn(image.shape, device=device)
         sqrt_tildas_alphas = self.sqrt_tildas_alphas[steps]
         sqrt_one_minus_tildas_alphas = self.sqrt_one_minus_tildas_alphas[steps]
-        noise_input = sqrt_tildas_alphas * image + sqrt_one_minus_tildas_alphas * eps
+        noised_input = sqrt_tildas_alphas * image + sqrt_one_minus_tildas_alphas * eps
         just_input = sqrt_tildas_alphas * image
 
         for i in range(gradient_accumulation):
-            noise_input_small = noise_input[i * inner_batch_size: (i + 1) * inner_batch_size]
+            noised_input_small = noised_input[i * inner_batch_size: (i + 1) * inner_batch_size]
             just_input_small = just_input[i * inner_batch_size: (i + 1) * inner_batch_size]
             noise = eps[i * inner_batch_size: (i + 1) * inner_batch_size]
             sqrt_one_minus_tildas_alphas_small = sqrt_one_minus_tildas_alphas[
@@ -113,14 +113,14 @@ class DDPMModule(pl.LightningModule):
             ######################
             # This correct else does not converge
 
-            pred_eps = self(noise_input_small, sqrt_one_minus_tildas_alphas_small)
+            pred_eps = self(noised_input_small, sqrt_one_minus_tildas_alphas_small)
 
-            loss_G = self.generator_loss(noise, pred_eps, noise_input_small)
+            loss_G = self.generator_loss(noise, pred_eps, noised_input_small)
 
             if i == 0:
                 with torch.no_grad():
-                    denoised = noise_input_small - sqrt_one_minus_tildas_alphas_small * pred_eps
-                    self.log_images(just_input_small, noise_input, denoised.detach())
+                    denoised = noised_input_small - sqrt_one_minus_tildas_alphas_small * pred_eps
+                    self.log_images(just_input_small, noised_input, denoised.detach())
             self.log('loss_G', loss_G, prog_bar=True)
             self.manual_backward(loss_G / gradient_accumulation)
 
@@ -143,7 +143,7 @@ class DDPMModule(pl.LightningModule):
     def validation_step(self, batch, batch_nb):
         xT = torch.randn(batch.shape[0], 3, self.img_size, self.img_size).type_as(batch)
         xt = xT
-        for t in tqdm(list(range(self.num_steps - 1, 0, -1))):
+        for t in tqdm(reversed(range(0, self.num_steps)), total=int(self.num_steps.item())):
             z = torch.randn_like(xt) if t > 0 else 0
             sqrt_alphat = self.sqrt_alphas[t]
             one_minus_alphas = self.one_minus_alphas[t]
@@ -173,7 +173,7 @@ class DDPMModule(pl.LightningModule):
 
             log_pl_image(self, grid)
 
-    def generator_loss(self, noise, pred_eps, noise_input_small):
+    def generator_loss(self, noise, pred_eps, noised_input_small):
 
         target_loss = self.target_loss(pred_eps, noise)
 

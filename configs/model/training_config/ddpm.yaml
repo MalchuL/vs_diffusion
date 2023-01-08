@@ -5,8 +5,8 @@ logging:
 initialization:
   pretrain_checkpoint_G: ${pretrain_gen}  # If passed model loads model else init_G argument initialization
   init_G: # Initialization params for generator
-    init_type: normal
-    init_gain: 0.02
+    init_type: kaiming
+    init_gain: 0.0
 
 optimizing:
   grad_clip:
@@ -16,7 +16,7 @@ optimizing:
   optimizers:
     optimizer_G: &optimizer_G
       _target_: torch.optim.Adam
-      lr: &lr 0.0001
+      lr: &lr 0.0002
       betas: [ 0.5, 0.99 ]
 
 
@@ -34,8 +34,8 @@ optimizing:
       epochs: ${trainer.max_epochs}
       steps_per_epoch: ${trainer.limit_train_batches}
       pct_start: ${onecycle_warmup_epoches:${trainer.max_epochs}, 0.5}  # The percentage of the cycle (in number of steps) spent increasing the learning rate.
-      div_factor: 25  # Determines the initial learning rate via initial_lr = max_lr/div_factor Default: 25
-      final_div_factor: ${get_one_cycle_final_div_factor:${model.training_config.optimizing.schedulers.scheduler_G.div_factor}, 20}  # Determines the minimum learning rate via min_lr = initial_lr/final_div_factor
+      div_factor: 20  # Determines the initial learning rate via initial_lr = max_lr/div_factor Default: 25
+      final_div_factor: ${get_one_cycle_final_div_factor:${model.training_config.optimizing.schedulers.scheduler_G.div_factor}, 10}  # Determines the minimum learning rate via min_lr = initial_lr/final_div_factor
       cycle_momentum: False # !!!!Affect adam betas if True
 
 losses:

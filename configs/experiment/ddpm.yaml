@@ -16,10 +16,10 @@ tags: ["DPPM"]
 seed: 12345
 
 trainer:
-  check_val_every_n_epoch: 10
+  check_val_every_n_epoch: 20
   max_epochs: 400
   limit_train_batches: 800
-  limit_val_batches: 10
+  limit_val_batches: 3
   log_every_n_steps: 10
 
 datamodule:
