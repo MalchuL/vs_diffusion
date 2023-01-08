@@ -47,6 +47,7 @@ class DDPMModule(pl.LightningModule):
         sigmas = np.sqrt(betas)
         self.register_buffer('sqrt_alphas', torch.tensor(np.sqrt(alphas)).view(-1, 1, 1, 1))
         self.register_buffer('one_minus_alphas', torch.tensor(1 - alphas).view(-1, 1, 1, 1))
+        self.register_buffer('one_minus_tildas_alphas', torch.tensor(1 - tilda_alphas).view(-1, 1, 1, 1))
         self.register_buffer('sqrt_tildas_alphas', torch.tensor(sqrt_tildas_alphas).view(-1, 1, 1, 1))
         self.register_buffer('sqrt_one_minus_tildas_alphas', torch.tensor(sqrt_one_minus_tildas_alphas).view(-1, 1, 1, 1))
         self.register_buffer('sigmas', torch.tensor(sigmas).view(-1, 1, 1, 1))
@@ -108,6 +109,7 @@ class DDPMModule(pl.LightningModule):
         eps = torch.randn(image.shape, device=device)
         sqrt_tildas_alphas = self.sqrt_tildas_alphas[steps]
         sqrt_one_minus_tildas_alphas = self.sqrt_one_minus_tildas_alphas[steps]
+        one_minus_tildas_alphas = self.one_minus_tildas_alphas[steps]
         noised_input = sqrt_tildas_alphas * image + sqrt_one_minus_tildas_alphas * eps
         just_input = sqrt_tildas_alphas * image
 
@@ -117,13 +119,14 @@ class DDPMModule(pl.LightningModule):
             noise = eps[i * inner_batch_size: (i + 1) * inner_batch_size]
             sqrt_one_minus_tildas_alphas_small = sqrt_one_minus_tildas_alphas[
                                                  i * inner_batch_size: (i + 1) * inner_batch_size]
+            one_minus_tildas_alphas_small = one_minus_tildas_alphas[i * inner_batch_size: (i + 1) * inner_batch_size]
 
             ######################
             # Optimize Generator #
             ######################
             # This correct else does not converge
 
-            pred_eps = self(noised_input_small, sqrt_one_minus_tildas_alphas_small)
+            pred_eps = self(noised_input_small, one_minus_tildas_alphas_small)
 
             loss_G = self.generator_loss(noise, pred_eps, noised_input_small)
 
@@ -157,11 +160,12 @@ class DDPMModule(pl.LightningModule):
             z = torch.randn_like(xt) if t > 0 else 0
             sqrt_alphat = self.sqrt_alphas[t]
             one_minus_alphas = self.one_minus_alphas[t]
+            one_minus_tildas_alphas = self.one_minus_tildas_alphas[t]
             sqrt_one_minus_tildas_alphas = self.sqrt_one_minus_tildas_alphas[t]
             sigma = self.sigmas[t]
 
             xt = 1 / sqrt_alphat * (xt - one_minus_alphas / sqrt_one_minus_tildas_alphas *
-                                    self(xt, sqrt_one_minus_tildas_alphas)) + sigma * z
+                                    self(xt, one_minus_tildas_alphas)) + sigma * z
 
         grid = xt
         grid = self.backward_mapping(grid)
