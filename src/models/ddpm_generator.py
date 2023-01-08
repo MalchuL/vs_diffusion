@@ -52,6 +52,10 @@ class DDPMModule(pl.LightningModule):
         self.register_buffer('sqrt_one_minus_tildas_alphas', torch.tensor(sqrt_one_minus_tildas_alphas).view(-1, 1, 1, 1))
         self.register_buffer('sigmas', torch.tensor(sigmas).view(-1, 1, 1, 1))
         self.register_buffer('num_steps', torch.tensor(num_steps, dtype=torch.int32).view(-1, 1, 1, 1))
+
+        # Steps embedding
+        steps_embed = np.linspace(start=-1, stop=1, num=num_steps, dtype=np.float32)
+        self.register_buffer('steps_embed', torch.tensor(steps_embed).view(-1, 1, 1, 1))
         ################
 
         if self.training_config is not None:
@@ -109,7 +113,7 @@ class DDPMModule(pl.LightningModule):
         eps = torch.randn(image.shape, device=device)
         sqrt_tildas_alphas = self.sqrt_tildas_alphas[steps]
         sqrt_one_minus_tildas_alphas = self.sqrt_one_minus_tildas_alphas[steps]
-        one_minus_tildas_alphas = self.one_minus_tildas_alphas[steps]
+        steps_embed = self.steps_embed[steps]
         noised_input = sqrt_tildas_alphas * image + sqrt_one_minus_tildas_alphas * eps
         just_input = sqrt_tildas_alphas * image
 
@@ -119,14 +123,14 @@ class DDPMModule(pl.LightningModule):
             noise = eps[i * inner_batch_size: (i + 1) * inner_batch_size]
             sqrt_one_minus_tildas_alphas_small = sqrt_one_minus_tildas_alphas[
                                                  i * inner_batch_size: (i + 1) * inner_batch_size]
-            one_minus_tildas_alphas_small = one_minus_tildas_alphas[i * inner_batch_size: (i + 1) * inner_batch_size]
+            steps_embed_small = steps_embed[i * inner_batch_size: (i + 1) * inner_batch_size]
 
             ######################
             # Optimize Generator #
             ######################
             # This correct else does not converge
 
-            pred_eps = self(noised_input_small, one_minus_tildas_alphas_small)
+            pred_eps = self(noised_input_small, steps_embed_small)
 
             loss_G = self.generator_loss(noise, pred_eps, noised_input_small)
 
@@ -160,12 +164,12 @@ class DDPMModule(pl.LightningModule):
             z = torch.randn_like(xt) if t > 0 else 0
             sqrt_alphat = self.sqrt_alphas[t]
             one_minus_alphas = self.one_minus_alphas[t]
-            one_minus_tildas_alphas = self.one_minus_tildas_alphas[t]
+            steps_embed = self.steps_embed[t]
             sqrt_one_minus_tildas_alphas = self.sqrt_one_minus_tildas_alphas[t]
             sigma = self.sigmas[t]
 
             xt = 1 / sqrt_alphat * (xt - one_minus_alphas / sqrt_one_minus_tildas_alphas *
-                                    self(xt, one_minus_tildas_alphas)) + sigma * z
+                                    self(xt, steps_embed)) + sigma * z
 
         grid = xt
         grid = self.backward_mapping(grid)
