@@ -1,0 +1,47 @@
+inner_batch_size: 16
+logging:
+  img_log_freq: 400
+
+initialization:
+  init_G: # Initialization params for generator
+    init_type: normal
+    init_gain: 0.02
+
+optimizing:
+  grad_clip:
+    G_opt:
+    #value: 10
+    #algorithm: norm
+  optimizers:
+    optimizer_G: &optimizer_G
+      _target_: torch.optim.Adam
+      lr: &lr 0.0001
+      betas: [ 0.5, 0.99 ]
+
+
+    paramwise_cfg: # On pretraining we block U-Net like passthrough to avoid overfitinng on identity op
+      optimizer_G:
+#        custom_keys:
+#          .ida_1:
+#            lr_mult: 0.1
+#            decay_mult: 1000
+  schedulers:
+    interval: 'step'
+    scheduler_G: &scheduler
+      _target_: torch.optim.lr_scheduler.OneCycleLR
+      max_lr: *lr
+      epochs: ${trainer.max_epochs}
+      steps_per_epoch: ${trainer.limit_train_batches}
+      pct_start: ${onecycle_warmup_epoches:${trainer.max_epochs}, 0.5}  # The percentage of the cycle (in number of steps) spent increasing the learning rate.
+      div_factor: 25  # Determines the initial learning rate via initial_lr = max_lr/div_factor Default: 25
+      final_div_factor: ${get_one_cycle_final_div_factor:${model.training_config.optimizing.schedulers.scheduler_G.div_factor}, 20}  # Determines the minimum learning rate via min_lr = initial_lr/final_div_factor
+      cycle_momentum: False # !!!!Affect adam betas if True
+
+losses:
+  weights:
+    target_weight: 1
+
+
+  target_loss:
+    _target_: torch.nn.MSELoss
+

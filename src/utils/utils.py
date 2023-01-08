@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List
 
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import Callback
 from pytorch_lightning.loggers import LightningLoggerBase
 from pytorch_lightning.utilities import rank_zero_only
@@ -88,6 +88,7 @@ def extras(cfg: DictConfig) -> None:
     # pretty print config tree using Rich library
     if cfg.extras.get("print_config"):
         log.info("Printing config tree with Rich! <cfg.extras.print_config=True>")
+        OmegaConf.resolve(cfg)
         rich_utils.print_config_tree(cfg, resolve=True, save_to_file=True)
 
 

@@ -1,22 +1,24 @@
 defaults:
-  - model_checkpoint.yaml
-  - early_stopping.yaml
   - model_summary.yaml
   - rich_progress_bar.yaml
   - _self_
 
-model_checkpoint:
-  dirpath: ${paths.output_dir}/checkpoints
-  filename: "epoch_{epoch:03d}"
-  monitor: "val/acc"
-  mode: "max"
-  save_last: True
-  auto_insert_metric_name: False
-
-early_stopping:
-  monitor: "val/acc"
-  patience: 100
-  mode: "max"
+learning_rate:
+  _target_: pytorch_lightning.callbacks.LearningRateMonitor
 
 model_summary:
-  max_depth: -1
+  max_depth: 3
+
+git_diff:
+  _target_: src.callbacks.git_diff_saver.GitDiffSaver
+  repo_dir: ${paths.root_dir}
+  tracking_files: ['configs', 'src', 'requirements.txt']
+
+model_checkpoint:
+  _target_: pytorch_lightning.callbacks.ModelCheckpoint
+  save_top_k: -1 # save k best models (determined by above metric)
+  save_last: True # additionaly always save model from last epoch
+  verbose: False
+  dirpath: "checkpoints/"
+  filename: "epoch_{epoch:03d}"
+  auto_insert_metric_name: False

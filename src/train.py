@@ -131,4 +131,6 @@ def main(cfg: DictConfig) -> Optional[float]:
 
 
 if __name__ == "__main__":
+    from src.utils.omegaconf_resolvers import register_resolvers
+    register_resolvers()
     main()
