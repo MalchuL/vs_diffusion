@@ -3,9 +3,10 @@ logging:
   img_log_freq: 400
 
 initialization:
+  pretrain_checkpoint_G: ${pretrain_gen}  # If passed model loads model else init_G argument initialization
   init_G: # Initialization params for generator
-    init_type: normal
-    init_gain: 0.02
+    init_type: kaiming
+    init_gain: 0.0
 
 optimizing:
   grad_clip:

@@ -45,8 +45,8 @@ class DDPMModule(pl.LightningModule):
         sqrt_tildas_alphas = np.sqrt(tilda_alphas)  # Used in prediction and sampling
         sqrt_one_minus_tildas_alphas = np.sqrt(1 - tilda_alphas)  # Used in prediction and sampling
         sigmas = np.sqrt(betas)
-        self.register_buffer('sqrt_alphas', torch.tensor(alphas).view(-1, 1, 1, 1))
-        self.register_buffer('one_minus_alphas', torch.tensor(betas).view(-1, 1, 1, 1))
+        self.register_buffer('sqrt_alphas', torch.tensor(np.sqrt(alphas)).view(-1, 1, 1, 1))
+        self.register_buffer('one_minus_alphas', torch.tensor(1 - alphas).view(-1, 1, 1, 1))
         self.register_buffer('sqrt_tildas_alphas', torch.tensor(sqrt_tildas_alphas).view(-1, 1, 1, 1))
         self.register_buffer('sqrt_one_minus_tildas_alphas', torch.tensor(sqrt_one_minus_tildas_alphas).view(-1, 1, 1, 1))
         self.register_buffer('sigmas', torch.tensor(sigmas).view(-1, 1, 1, 1))
@@ -69,7 +69,10 @@ class DDPMModule(pl.LightningModule):
 
     def create_generator(self):
         netG = instantiate(self.config.netG)
-        init_net(netG, **self.training_config.initialization.init_G)
+        if self.training_config.initialization.pretrain_checkpoint_G:
+            load_dict(netG, 'netG', self.training_config.initialization.pretrain_checkpoint_G)
+        else:
+            init_net(netG, **self.training_config.initialization.init_G)
         return netG
 
     def backward_mapping(self, real_tensor):

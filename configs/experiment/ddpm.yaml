@@ -25,6 +25,7 @@ trainer:
 datamodule:
   batch_size: ${model.training_config.inner_batch_size}
 
+pretrain_gen: null
 task_name: 'DDPM'
 
 
