@@ -17,7 +17,7 @@ seed: 12345
 
 trainer:
   check_val_every_n_epoch: 20
-  max_epochs: 400
+  max_epochs: 1000
   limit_train_batches: 800
   limit_val_batches: 3
   log_every_n_steps: 10

@@ -67,6 +67,8 @@ class DDPMModule(pl.LightningModule):
             self.register_buffer('cur_nimg', torch.zeros([], dtype=torch.long))
             self.register_buffer('num_iters', torch.zeros([], dtype=torch.long))
 
+            self.offset = 0
+
     def create_generator(self):
         netG = instantiate(self.config.netG)
         if self.training_config.initialization.pretrain_checkpoint_G:
@@ -94,7 +96,15 @@ class DDPMModule(pl.LightningModule):
 
         # Gen noise input
         device = image.device
-        steps = torch.randint(int(self.num_steps), [bs], device=image.device)
+
+        # Uniform steps
+        bin_size = self.num_steps // bs
+        steps = torch.tensor([self.offset + i * bin_size for i in range(bs)], dtype=torch.long, device=device)
+        self.offset += 1
+        if self.offset + bin_size * (bs - 1) >= self.num_steps:
+            self.offset = 0
+        ###############
+
         eps = torch.randn(image.shape, device=device)
         sqrt_tildas_alphas = self.sqrt_tildas_alphas[steps]
         sqrt_one_minus_tildas_alphas = self.sqrt_one_minus_tildas_alphas[steps]

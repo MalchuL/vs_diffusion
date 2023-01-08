@@ -1,6 +1,6 @@
 inner_batch_size: 16
 logging:
-  img_log_freq: 400
+  img_log_freq: 1200
 
 initialization:
   pretrain_checkpoint_G: ${pretrain_gen}  # If passed model loads model else init_G argument initialization
@@ -17,7 +17,7 @@ optimizing:
     optimizer_G: &optimizer_G
       _target_: torch.optim.Adam
       lr: &lr 0.0002
-      betas: [ 0.5, 0.99 ]
+      betas: [ 0.9, 0.999 ]
 
 
     paramwise_cfg: # On pretraining we block U-Net like passthrough to avoid overfitinng on identity op
