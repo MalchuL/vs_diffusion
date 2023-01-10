@@ -76,10 +76,11 @@ class DDPMModule(pl.LightningModule):
 
     def create_generator(self):
         netG = instantiate(self.config.netG)
-        if self.training_config.initialization.pretrain_checkpoint_G:
-            load_dict(netG, 'netG', self.training_config.initialization.pretrain_checkpoint_G)
-        else:
-            init_net(netG, **self.training_config.initialization.init_G)
+        if self.training_config is not None:
+            if self.training_config.initialization.pretrain_checkpoint_G:
+                load_dict(netG, 'netG', self.training_config.initialization.pretrain_checkpoint_G)
+            else:
+                init_net(netG, **self.training_config.initialization.init_G)
         return netG
 
     def backward_mapping(self, real_tensor):
@@ -171,6 +172,9 @@ class DDPMModule(pl.LightningModule):
             xt = 1 / sqrt_alphat * (xt - one_minus_alphas / sqrt_one_minus_tildas_alphas *
                                     self(xt, steps_embed)) + sigma * z
 
+        if batch_nb == 0:
+            self.log_images(xt, name='val_images')
+
         grid = xt
         grid = self.backward_mapping(grid)
 
@@ -179,7 +183,7 @@ class DDPMModule(pl.LightningModule):
         return {}
 
     @rank_zero_only
-    def log_images(self, *images):
+    def log_images(self, *images, name='train_image'):
         # tensors [self.real, self.fake, preds, self.cartoon]
         images = list(images)
         if self.check_count('img_log_freq', self.training_config.logging.img_log_freq) or self.global_step in (0, 1):
@@ -189,7 +193,7 @@ class DDPMModule(pl.LightningModule):
             grid = self.backward_mapping(grid)[0]
             grid = torch.clamp(grid, 0.0, 1.0)
 
-            log_pl_image(self, grid)
+            log_pl_image(self, grid, name=name)
 
     def generator_loss(self, noise, pred_eps, noised_input_small):
 

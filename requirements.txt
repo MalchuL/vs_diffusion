@@ -3,6 +3,7 @@ torch==1.9.0
 torchvision==0.10.0
 pytorch-lightning==1.8.3
 torchmetrics==0.11.0
+segmentation_models_pytorch
 
 # --------- misc ------------- #
 opencv-python==4.5.5.64

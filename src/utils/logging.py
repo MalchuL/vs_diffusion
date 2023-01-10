@@ -35,15 +35,15 @@ except:
     AimLogger = None
 
 
-def log_pl_image(pl_module, image: torch.Tensor):
+def log_pl_image(pl_module, image: torch.Tensor, name='train_image'):
     # Image must be in range 0..1
 
     for logger in pl_module.loggers:
         print('Log image', pl_module.global_step)  # To avoid segmentation fault
         if tb_available and isinstance(logger, TensorBoardLogger):
-            logger.experiment.add_image('train_image', image, pl_module.global_step)
+            logger.experiment.add_image(name, image, pl_module.global_step)
         elif wandb_available and isinstance(logger, WandbLogger):
-            logger.experiment.log({'train_image': [wandb.Image(image)]})
+            logger.experiment.log({name: [wandb.Image(image)]}, step=pl_module.global_step)
         elif aim_available and isinstance(logger, AimLogger):
             aim_image = AimImage(image)
-            logger.experiment.track(aim_image, name='train_image', step=pl_module.global_step)
+            logger.experiment.track(aim_image, name=name, step=pl_module.global_step)

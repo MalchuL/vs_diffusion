@@ -4,6 +4,7 @@ from typing import List, Optional
 import torch
 from torch import nn
 
+from src.models.components.layers.coordconv import AddCoords
 from src.models.components.utils.norm_layers import get_norm_layer
 from src.models.components.utils.pool_layers import get_pool_layer
 
@@ -266,7 +267,9 @@ class VSGenerator(nn.Module):
         norm_layer = get_norm_layer(norm_name)
         pool_layer = get_pool_layer(pool_name)
 
-        self.base_layer = ConvBNRelu(input_channels + 1, channels[0], kernel_size=7, norm_layer=norm_layer)
+        self.coord_conv = AddCoords()
+
+        self.base_layer = ConvBNRelu(input_channels + 1 + 2, channels[0], kernel_size=7, norm_layer=norm_layer)
 
         donwsample_size = 2
 
@@ -280,18 +283,18 @@ class VSGenerator(nn.Module):
 
         self.module_levels = nn.ModuleList()
 
-        level0 = self._make_conv_level(channels[0], channels[0], levels[0], norm_layer=norm_layer)
-        level1 = self._make_conv_level(channels[0], channels[1], levels[1], stride=2, norm_layer=norm_layer)
+        level0 = self._make_conv_level(channels[0] + 1 + 2, channels[0], levels[0], norm_layer=norm_layer)
+        level1 = self._make_conv_level(channels[0] + 1 + 2, channels[1], levels[1], stride=2, norm_layer=norm_layer)
 
         block = ResidualBlock
 
-        level2 = Tree(levels[2], block, channels[1], channels[2], 2, level_root=False, norm_layer=norm_layer,
+        level2 = Tree(levels[2], block, channels[1] + 1 + 2, channels[2], 2, level_root=False, norm_layer=norm_layer,
                       pool_layer=pool_layer)
-        level3 = Tree(levels[3], block, channels[2], channels[3], 2, level_root=True, norm_layer=norm_layer,
+        level3 = Tree(levels[3], block, channels[2] + 1 + 2, channels[3], 2, level_root=True, norm_layer=norm_layer,
                       pool_layer=pool_layer)
-        level4 = Tree(levels[4], block, channels[3], channels[4], 2, level_root=True, norm_layer=norm_layer,
+        level4 = Tree(levels[4], block, channels[3] + 1 + 2, channels[4], 2, level_root=True, norm_layer=norm_layer,
                       pool_layer=pool_layer)
-        level5 = Tree(levels[5], block, channels[4], channels[5], 2, level_root=True, norm_layer=norm_layer,
+        level5 = Tree(levels[5], block, channels[4] + 1 + 2, channels[5], 2, level_root=True, norm_layer=norm_layer,
                       pool_layer=pool_layer)
 
         self.module_levels.extend([level0, level1, level2, level3, level4, level5])
@@ -323,10 +326,14 @@ class VSGenerator(nn.Module):
             inplanes = planes
         return nn.Sequential(*modules)
 
-    def forward_features(self, x):
+    def forward_features(self, x, step):
         out_feats = []
+        x = torch.cat([x, torch.ones(x.shape[0], 1, x.shape[2], x.shape[3]).type_as(x) * step], dim=1)
+        x = self.coord_conv(x)
         out = self.base_layer(x)
         for i, module in enumerate(self.module_levels):
+            out = torch.cat([out, torch.ones(out.shape[0], 1, out.shape[2], out.shape[3]).type_as(x) * step], dim=1)
+            out = self.coord_conv(out)
             out = module(out)
             if i >= self.last_level:
                 out_feats.append(out)
@@ -341,8 +348,7 @@ class VSGenerator(nn.Module):
         out = self.act(out)
         return out
     def forward(self, x, step):
-        x = torch.cat([x, torch.ones(x.shape[0], 1, x.shape[2], x.shape[3]).type_as(x) * step], dim=1)
-        out_feats = self.forward_features(x)
+        out_feats = self.forward_features(x, step)
         out = self.forward_head(out_feats.copy())
         return out
 
