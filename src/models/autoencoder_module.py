@@ -3,6 +3,7 @@ import logging
 import math
 import os.path
 from collections import defaultdict
+from itertools import chain
 from pathlib import Path
 
 import pytorch_lightning as pl
@@ -15,13 +16,13 @@ from torch import autograd
 from src.metrics.metric_collection import get_alignment_metrics
 from src.models.components.ada_layers.augments_factory import get_augments
 from src.models.components.ada_layers.torch_utils import misc
+from src.models.components.autoencoder.distributions import DiagonalGaussianDistribution
 
 from src.models.components.autoencoder.abstract_autoencoder import AbstractAutoEncoder
 import torch.nn.functional as F
 from src.models.components.losses.gan_loss import GANLoss
 from src.models.components.losses.tv_loss import TVLoss
 from src.models.components.utils.init_net import init_net
-from src.models.components.utils.interpolation.interpolator import Interpolator
 from src.optimizers.optimizer_constructor import DefaultOptimizerConstructor
 from src.utils.instantiate import instantiate
 from src.utils.load_pl_dict import load_dict
@@ -46,10 +47,19 @@ class KlAutoEncoderModule(pl.LightningModule):
         self.img_size = self.config.img_size
         self.example_input_array = torch.randn(1, 3, self.img_size, self.img_size)
 
+        self.embed_dim = self.config.embedding.embed_dim
+
+        # AE embedding
+        self.double_z = self.autoencoder.get_double_z()
+        z_multiplier = 2 if self.double_z else 1
+        z_channels = self.autoencoder.get_encoded_dim()
+        self.quant_conv = torch.nn.Conv2d(z_channels * z_multiplier, self.embed_dim * z_multiplier, 1)
+        self.post_quant_conv = torch.nn.Conv2d(self.embed_dim, z_channels, 1)
+        self.distribution = DiagonalGaussianDistribution()
 
         self.register_buffer('cur_nimg', torch.zeros([], dtype=torch.long))
         self.register_buffer('num_iters', torch.zeros([], dtype=torch.long))
-        
+
         if self.training_config is not None:
             self.use_sigmoid = self.training_config.use_sigmoid
 
@@ -58,30 +68,30 @@ class KlAutoEncoderModule(pl.LightningModule):
 
             self.netD = self.create_discriminator()
             logging.info(self.netD)
-            
+
             adv_inner_loss = instantiate(self.training_config.losses.adv_criterion)
             self.adv_apply_sigmoid = self.training_config.losses.adv_apply_sigmoid
             self.adv_loss = GANLoss(criterion=adv_inner_loss,
                                     is_logit=not self.use_sigmoid or not self.adv_apply_sigmoid)
-            
+
             self.content_loss = instantiate(self.training_config.losses.content_loss)
-            
+
             logging.info(self.content_loss)
             self.clip_loss = instantiate(self.training_config.losses.clip_loss)
             self.tv_loss = TVLoss()
             self.target_loss = instantiate(self.training_config.losses.target_loss)
-            self.target_loss_interpolator: Interpolator = instantiate(self.training_config.losses.interpolation.target_loss)
 
             # Weights block
-            self.content_weight = self.training_config.losses.weights.content_weight
-            self.clip_weight = self.training_config.losses.weights.clip_weight
-            self.adv_weight = self.training_config.losses.weights.adv_weight
-            self.global_D_weight = self.training_config.losses.weights.global_D_weight
-            self.tv_weight = self.training_config.losses.weights.tv_weight
-            self.target_weight = self.training_config.losses.weights.target_weight
+            weights = self.training_config.losses.weights
+            self.content_weight = weights.content_weight
+            self.clip_weight = weights.clip_weight
+            self.adv_weight = weights.adv_weight
+            self.global_D_weight = weights.global_D_weight
+            self.tv_weight = weights.tv_weight
+            self.target_weight = weights.target_weight
+            self.kl_weight = weights.kl_weight
 
             self.register_buffer('pl_mean', torch.zeros([]))
-
 
             # ADA
             self.ada_target = self.training_config.ada.ada_target
@@ -93,7 +103,6 @@ class KlAutoEncoderModule(pl.LightningModule):
             self.augment_pipe = get_augments(self.training_config.ada.name)
 
             self.valid_metrics = get_alignment_metrics(prefix='val/')  # For ema
-            self.valid_metrics_epoch = get_alignment_metrics(prefix='val_epoch/')  # For output for epoch model
 
     def create_autoencoder(self):
         autoencoder = instantiate(self.config.autoencoder)
@@ -111,8 +120,30 @@ class KlAutoEncoderModule(pl.LightningModule):
     def backward_mapping(self, real_tensor):
         return (real_tensor * self.std + self.mean)
 
-    def forward(self, input):
-        return self.autoencoder(input)
+    def encode(self, x):
+        encoder = self.autoencoder.encoder if self.training else self.autoencoder_ema.encoder
+        h = encoder(x)
+        z = self.quant_conv(h)
+        return z
+
+    def decode(self, z):
+        decoder = self.autoencoder.decoder if self.training else self.autoencoder_ema.decoder
+        z = self.post_quant_conv(z)
+        dec = decoder(z)
+        return dec
+
+    def forward(self, input, sample_posterior=False):
+        z = self.encode(input)
+        if self.double_z:
+            mean, logvar = torch.chunk(z, 2, dim=1)
+        else:
+            mean = z
+            logvar = 0
+
+        z = self.distribution.sample(mean, logvar, determenistic=not sample_posterior)
+        dec = self.decode(z)
+        return dec, (mean, logvar)
+
 
     def apply_sigmoid(self, data):
         if self.use_sigmoid:
@@ -135,7 +166,6 @@ class KlAutoEncoderModule(pl.LightningModule):
         assert bs % self.training_config.inner_batch_size == 0 and bs >= self.training_config.inner_batch_size
         inner_batch_size = self.training_config.inner_batch_size
 
-
         temp = {}
         for i in range(gradient_accumulation):
             real_small = real[i * inner_batch_size: (i + 1) * inner_batch_size]
@@ -150,9 +180,9 @@ class KlAutoEncoderModule(pl.LightningModule):
             self.requires_grad(self.autoencoder, True)
             self.requires_grad(self.netD, False)
 
-            fake = self.autoencoder(real_small)
+            fake, mean_logvar = self(real_small)
 
-            loss_autoencoder = self.generator_loss(real_small, fake, temp)
+            loss_autoencoder = self.generator_loss(real_small, fake, mean_logvar, temp)
 
             preds = temp['preds']
             if i == 0:
@@ -187,7 +217,8 @@ class KlAutoEncoderModule(pl.LightningModule):
             # Reg generator
             ##########################
             g_pl_every = self.training_config.losses.pl_loss.g_pl_every
-            if g_pl_every > 0 and self.check_count('G_reg_interval', g_pl_every, update_count=i == gradient_accumulation - 1):
+            if g_pl_every > 0 and self.check_count('G_reg_interval', g_pl_every,
+                                                   update_count=i == gradient_accumulation - 1):
                 self.autoencoder.train()
                 self.requires_grad(self.autoencoder, True)
                 G_reg_loss = self.generator_reg(real_small) * g_pl_every
@@ -197,8 +228,9 @@ class KlAutoEncoderModule(pl.LightningModule):
             ##########################
             # Reg discriminator
             ##########################
-            d_reg_every: object = self.training_config.losses.r1_loss.d_reg_every
-            if d_reg_every > 0 and self.check_count('D_reg_interval', d_reg_every, update_count=i == gradient_accumulation - 1):
+            d_reg_every: int = self.training_config.losses.r1_loss.d_reg_every
+            if d_reg_every > 0 and self.check_count('D_reg_interval', d_reg_every,
+                                                    update_count=i == gradient_accumulation - 1):
                 self.netD.train()
                 self.requires_grad(self.netD, True)
                 D_reg_loss = self.discriminator_reg(real_small) * d_reg_every
@@ -221,33 +253,30 @@ class KlAutoEncoderModule(pl.LightningModule):
         self.log('cur_nimg', self.cur_nimg, prog_bar=True)
         self.num_iters += 1
 
-
     def on_validation_start(self) -> None:
         # Move metrics to cpu
         self.valid_metrics.cpu()
-        self.valid_metrics_epoch.cpu()
 
     def on_fit_start(self) -> None:
         # Create validation folder
         if not os.path.exists('output'):
             self.val_folder = Path('output')
             self.val_folder.mkdir(exist_ok=True, parents=True)
+
     def validation_step(self, batch, batch_nb):
 
         self.autoencoder.eval()
         real = batch['image']
-        fake_ema = self(real)
-        fake = self.autoencoder(real)
+
+        fake_ema, _ = self(real)
 
         # Compute metrics
         denormalized_cartoon = self.backward_mapping(real)
         denormalized_fake_ema = self.backward_mapping(fake_ema)
-        denormalized_fake = self.backward_mapping(fake)
 
         self.valid_metrics.update(denormalized_fake_ema.cpu(), denormalized_cartoon.cpu())
-        self.valid_metrics_epoch.update(denormalized_fake.cpu(), denormalized_cartoon.cpu())
 
-        grid = torchvision.utils.make_grid(torch.cat([real, fake, fake_ema], dim=0))
+        grid = torchvision.utils.make_grid(torch.cat([real, fake_ema], dim=0))
         grid = grid * torch.tensor(self.config.norm.std, dtype=grid.dtype, device=grid.device).view(-1, 1,
                                                                                                     1) + torch.tensor(
             self.config.norm.mean, dtype=grid.dtype, device=grid.device).view(-1, 1, 1)
@@ -273,7 +302,7 @@ class KlAutoEncoderModule(pl.LightningModule):
         self.log('augment/ada_stats', self.ada_stats)
 
     def on_validation_epoch_end(self) -> None:
-        for metrics in [self.valid_metrics, self.valid_metrics_epoch]:
+        for metrics in [self.valid_metrics]:
             output = metrics.compute()
             self.log_dict(output)
             metrics.reset()
@@ -304,7 +333,14 @@ class KlAutoEncoderModule(pl.LightningModule):
         else:
             return (pred, None)
 
-    def generator_loss(self, real, fake, out=None):
+    @staticmethod
+    def read_generator_output(pred):
+        if isinstance(pred, (tuple, list)):
+            return pred[0]
+        else:
+            pred
+
+    def generator_loss(self, real, fake, mean_logvar, out=None):
         real = self.backward_mapping(real)
         if self.augment_pipe is not None:
             augment_fake = self.augment_pipe(fake)
@@ -321,7 +357,7 @@ class KlAutoEncoderModule(pl.LightningModule):
         generated_pred, generated_pred_stat = self.apply_sigmoid_to_adv(generated_pred,
                                                                         generated_pred_stat)  # Apply sigmoid to input to adv_loss
 
-        content_loss = self.content_loss(fake, real) # We apply content loss for aligned images in dataset
+        content_loss = self.content_loss(fake, real)  # We apply content loss for aligned images in dataset
         self.log('train_autoencoder/content_loss', content_loss)
         content_loss = content_loss * self.content_weight
 
@@ -334,6 +370,11 @@ class KlAutoEncoderModule(pl.LightningModule):
         tv_loss = self.tv_loss(fake)
         target_loss = self.target_loss(fake, real)
 
+        mean, logvar = mean_logvar
+        kl_loss = self.distribution.kl(mean, logvar)
+        kl_weight = self.kl_weight
+
+        self.log('train_autoencoder/kl_loss', kl_loss, prog_bar=True)
         self.log('train_autoencoder/clip_loss', clip_loss)
         self.log('train_autoencoder/tv_loss', tv_loss)
         self.log('train_autoencoder/target_loss', target_loss)
@@ -348,8 +389,8 @@ class KlAutoEncoderModule(pl.LightningModule):
         global_D_weight = self.global_D_weight if generated_pred_stat is not None else 0
 
         errG = (fake_loss * (1 - global_D_weight) + fake_stat_loss * (
-            global_D_weight)) * adv_weight + content_loss + clip_loss * self.clip_weight +\
-            tv_loss * tv_weight + target_loss * target_weight
+            global_D_weight)) * adv_weight + content_loss + clip_loss * self.clip_weight + \
+               tv_loss * tv_weight + target_loss * target_weight + kl_loss * kl_weight
 
         return errG
 
@@ -386,7 +427,9 @@ class KlAutoEncoderModule(pl.LightningModule):
             if not self.use_sigmoid:
                 img_pred_patch = torch.sigmoid(img_pred_patch)
             for group_layer in range(img_pred_patch.shape[1]):
-                self.log(f'train_D/patch_{img_name}_D_probs_{group_layer}_group', 1 - img_pred_patch[:,group_layer].mean() if is_cartoon else img_pred_patch[:,group_layer].mean())
+                self.log(f'train_D/patch_{img_name}_D_probs_{group_layer}_group',
+                         1 - img_pred_patch[:, group_layer].mean() if is_cartoon else img_pred_patch[:,
+                                                                                      group_layer].mean())
 
             # Global loss
             if img_pred_stat is None:
@@ -420,7 +463,7 @@ class KlAutoEncoderModule(pl.LightningModule):
         real_input.requires_grad = True
 
         batch_size = round(real_input.shape[0] // pl_batch_shrink)
-        gen_img = self.autoencoder(real_input[:batch_size])
+        gen_img, _ = self(real_input[:batch_size])
         pl_noise = torch.randn_like(gen_img) / math.sqrt(gen_img.shape[2] * gen_img.shape[3])
 
         pl_grads = torch.autograd.grad(outputs=[(gen_img * pl_noise).sum()], inputs=[real_input], create_graph=True,
@@ -482,7 +525,6 @@ class KlAutoEncoderModule(pl.LightningModule):
         for p in model.parameters():
             p.requires_grad = flag
 
-
     def schedule_autoencoder(self):
         sch_autoencoder, _ = self.lr_schedulers()
         sch_autoencoder.step()
@@ -497,7 +539,8 @@ class KlAutoEncoderModule(pl.LightningModule):
         grad_clip = self.training_config.optimizing.grad_clip.D_opt
 
         if grad_clip is not None:
-            self.clip_gradients(optimizer=d_opt, gradient_clip_val=grad_clip.value, gradient_clip_algorithm=grad_clip.algorithm)
+            self.clip_gradients(optimizer=d_opt, gradient_clip_val=grad_clip.value,
+                                gradient_clip_algorithm=grad_clip.algorithm)
         d_opt.step()
         d_opt.zero_grad(set_to_none=True)
 
@@ -506,7 +549,8 @@ class KlAutoEncoderModule(pl.LightningModule):
         grad_clip = self.training_config.optimizing.grad_clip.G_opt
 
         if grad_clip is not None:
-            self.clip_gradients(optimizer=autoencoder_opt, gradient_clip_val=grad_clip.value, gradient_clip_algorithm=grad_clip.algorithm)
+            self.clip_gradients(optimizer=autoencoder_opt, gradient_clip_val=grad_clip.value,
+                                gradient_clip_algorithm=grad_clip.algorithm)
 
         autoencoder_opt.step()
         autoencoder_opt.zero_grad(set_to_none=True)
@@ -525,7 +569,10 @@ class KlAutoEncoderModule(pl.LightningModule):
     def configure_optimizers(self):
         opt_params = self.training_config.optimizing.optimizers
         optimizer_autoencoder = DefaultOptimizerConstructor(opt_params.optimizer_autoencoder,
-                                                  opt_params.paramwise_cfg.optimizer_autoencoder)(self.autoencoder)
+                                                            opt_params.paramwise_cfg.optimizer_autoencoder)(
+            self.autoencoder)
+        optimizer_autoencoder.add_param_group(
+            {'params': chain(self.quant_conv.parameters(), self.post_quant_conv.parameters())})
         optimizer_D = DefaultOptimizerConstructor(opt_params.optimizer_D,
                                                   opt_params.paramwise_cfg.optimizer_D)(self.netD)
         interval = self.training_config.optimizing.schedulers.interval

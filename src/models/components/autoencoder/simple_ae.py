@@ -20,8 +20,7 @@ class SimpleAutoEncoder(AbstractAutoEncoder):
         decoder = Decoder(out_ch=input_channels, ch=ch, ch_mult=ch_mult, num_res_blocks=num_res_blocks,
                           dropout=dropout, resamp_with_conv=resamp_with_conv, z_channels=z_channels, give_pre_end=False,
                           norm_layer=norm_layer)
-        self.double_z = double_z
-        super().__init__(encoder=encoder, decoder=decoder, z_channels=z_channels)
+        super().__init__(encoder=encoder, decoder=decoder, z_channels=z_channels, double_z=double_z)
 
     def forward(self, x):
         feats = self.forward_encoder(x)

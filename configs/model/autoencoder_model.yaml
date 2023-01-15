@@ -6,11 +6,16 @@ _target_: src.models.autoencoder_module.KlAutoEncoderModule
 _recursive_: False
 
 model_config:
+  embedding:
+    embed_dim: 4
+
   autoencoder:
     _target_: src.models.components.autoencoder.simple_ae.SimpleAutoEncoder
     input_channels: 3
     ch: 16
     norm_name: group
+    z_channels: 4
+    double_z: True
 
   img_size: 256  # Saved only for additional use
 
