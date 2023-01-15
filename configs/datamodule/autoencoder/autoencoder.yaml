@@ -1,0 +1,11 @@
+_target_: src.datamodules.autoencoder_datamodule.AutoEncoderDataModule
+
+data_dir: ${paths.data_dir}ffhq # data_dir is specified in config.yaml
+batch_size: 16
+transform_params:
+  load_size: ${model.model_config.img_size}
+  fine_size: ${model.model_config.img_size}
+  mean: ${model.model_config.norm.mean}
+  std: ${model.model_config.norm.std}
+num_workers: 8
+pin_memory: False

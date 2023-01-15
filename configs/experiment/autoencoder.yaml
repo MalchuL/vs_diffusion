@@ -1,0 +1,32 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=example
+
+defaults:
+  - override /datamodule: autoencoder/autoencoder.yaml
+  - override /model: autoencoder_model.yaml
+  - override /callbacks: default.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: ["Autoencoder"]
+
+seed: 12345
+
+trainer:
+  check_val_every_n_epoch: 20
+  max_epochs: 1000
+  limit_train_batches: 800
+  limit_val_batches: 3
+  log_every_n_steps: 10
+  num_sanity_val_steps: 1
+
+datamodule:
+  batch_size: ${model.training_config.inner_batch_size}
+
+pretrain_gen: null
+task_name: 'Autoencoder'
+
+

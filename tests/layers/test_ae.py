@@ -31,7 +31,7 @@ def test_ar():
     in_channels = 3
     bs = 5
     h, w = 256, 256
-    block = SimpleAutoEncoder(in_channels=in_channels, ch=16)
+    block = SimpleAutoEncoder(input_channels=in_channels, ch=16)
     with torch.inference_mode():
         x = torch.rand(bs, in_channels, h, w)
         out = block(x)

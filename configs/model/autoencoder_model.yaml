@@ -1,0 +1,20 @@
+# @package model
+defaults:
+  - training_config: autoencoder.yaml
+
+_target_: src.models.autoencoder_module.KlAutoEncoderModule
+_recursive_: False
+
+model_config:
+  autoencoder:
+    _target_: src.models.components.autoencoder.simple_ae.SimpleAutoEncoder
+    input_channels: 3
+    ch: 16
+    norm_name: group
+
+  img_size: 256  # Saved only for additional use
+
+  norm:
+    mean: [ 0.5, 0.5, 0.5 ]
+    std: [ 0.5, 0.5, 0.5 ]
+

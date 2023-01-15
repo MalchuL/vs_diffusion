@@ -1,0 +1,155 @@
+inner_batch_size: 7
+ema:
+  ema_kimg: 20.0
+  ema_rampup: 0.05
+logging:
+  img_log_freq: 400
+  log_ema: True
+use_sigmoid: &use_sigmoid False # model training with sigmoid
+netD: # Discriminator model
+  _target_: src.models.components.discriminators.cartoongan_discriminator.CartoonGANDiscriminator
+  use_sigmoid: *use_sigmoid
+  groups: 1  # Use 3 if you want to separate features from style_representation
+  multiplier: 1
+  use_padding: True
+  apply_instance_norm: False
+
+initialization:
+  pretrain_checkpoint_autoencoder: ${pretrain_gen}  # If passed model loads model else init_autoencoder argument initialization
+  init_autoencoder: # Initialization params for generator
+    init_type: normal
+    init_gain: 0.02
+  init_D: # Initialization params for discriminator
+    init_type: normal
+    init_gain: 0.02
+
+ada:
+  name: null
+  ada_target: 0.6
+  ada_gamma: 0.99
+  ada_interval: 8
+  ada_kimg: 100
+
+style_representation:
+  _target_: src.models.components.layers.style_representation.StyleRepresentation
+  layers: ["color_shift_with_sobel", "surface", "identity"]
+
+optimizing:
+  grad_clip:
+    D_opt:
+    G_opt:
+      #value: 10
+      #algorithm: norm
+    G_opt_pretrain:
+      #value: 0.0001
+      #algorithm: norm
+
+  discriminator_delay:
+    delay_steps: 5000  # Steps for pretraining generator
+    img_blending_steps: 3000  # Step for interpolated between real and toonified version
+
+  optimizers:
+    optimizer_autoencoder: &optimizer_autoencoder
+      _target_: torch.optim.Adam
+      lr: &lr 0.0001
+      betas: [ 0.5, 0.99 ]
+
+    optimizer_autoencoder_pretrain: *optimizer_autoencoder
+
+    optimizer_D:
+      _target_: torch.optim.Adam
+      lr: *lr
+      betas: [ 0.5, 0.99 ]
+
+    paramwise_cfg:  # On pretraining we block U-Net like passthrough to avoid overfitinng on identity op
+      optimizer_autoencoder_pretrain:
+         custom_keys:
+           .ida_1:
+             lr_mult: 0.1
+             decay_mult: 1000
+
+      optimizer_autoencoder:
+      optimizer_D:
+  schedulers:
+    interval: 'step'
+    scheduler_autoencoder: &scheduler
+      _target_: torch.optim.lr_scheduler.OneCycleLR
+      max_lr: *lr
+      epochs: ${trainer.max_epochs}
+      steps_per_epoch: ${trainer.limit_train_batches}
+      pct_start: ${onecycle_warmup_epoches:${trainer.max_epochs}, 0.5}  # The percentage of the cycle (in number of steps) spent increasing the learning rate.
+      div_factor: 25  # Determines the initial learning rate via initial_lr = max_lr/div_factor Default: 25
+      final_div_factor: ${get_one_cycle_final_div_factor:${model.training_config.optimizing.schedulers.scheduler_autoencoder.div_factor}, 20}  # Determines the minimum learning rate via min_lr = initial_lr/final_div_factor
+      cycle_momentum: False # !!!!Affect adam betas if True
+    scheduler_autoencoder_pretrain: *scheduler
+    scheduler_D: *scheduler
+pretrain_method: regen_cartoon
+losses:
+  weights:
+    content_weight: &content_weight 20  # Content VGG loss in generator loss
+    pretrain_content_weight: *content_weight
+    adv_weight: 1  # Adversial loss in D and G
+    global_D_weight: 0.1  # Global features from weight from disriminator
+    clip_weight: 10.0
+    tv_weight: 5.0
+    target_weight: 50
+    consistency_loss_weight: 0
+
+  interpolation:
+    target_loss:
+      _target_: src.models.components.utils.interpolation.interpolator.Interpolator
+      method: easeInExpo
+      num_steps: 70000
+      inverse: True
+
+    content_loss:
+      _target_: src.models.components.utils.interpolation.interpolator.MultiInterpolator
+      interpolators:
+        - _target_: src.models.components.utils.interpolation.interpolator.Interpolator
+          method: easeInExpo
+          num_steps: 2500  # ${model.config.train.optimizing.discriminator_delay.delay_steps}
+          inverse: True  # First donwsample
+        - _target_: src.models.components.utils.interpolation.interpolator.Interpolator
+          method: easeInExpo
+          num_steps: 10000 # ${model.config.train.losses.interpolation.target_loss.num_steps}
+          inverse: False   # Second upsample
+
+  adv_apply_sigmoid: False
+  adv_criterion:
+    _target_: torch.nn.BCEWithLogitsLoss
+
+  clip_loss:
+    _target_: src.models.components.losses.t_clip_loss.TClip
+
+  consistency_loss:
+    _target_: src.models.components.losses.consistency_loss.ConsistencyLoss
+
+  pl_loss:
+    g_pl_every: 4  # Return to 4 if you want reg
+    pl_weight: 100
+    pl_batch_shrink: 2
+    pl_decay: 0.1
+
+  r1_loss:
+    d_reg_every: 16  # Return to 16 if you want reg
+    r1: 0.001
+
+  target_loss:
+    _target_: torch.nn.MSELoss
+
+  content_loss:
+    _target_: src.models.components.losses.content_loss.ContentLoss
+    apply_norm: True # Apply Instance Normy Instance Norm, doesn't converge when pretrains network
+    fix_pad: True
+    #layers: [2, 7, 14, 21] # For vgg16
+    #layers: [2, 7, 16, 25] # For vgg19
+    #layers: [3, 10, 23, 36] # For vgg19_bn
+    #layers: [25] # For vgg19
+    layers: [3, 10, 23, 36]
+    model_name: vgg19_bn  # From 'https://download.pytorch.org/models/vgg16-397923af.pth',
+    pred_mean: [0.485, 0.456, 0.406]
+    pred_std: [0.229, 0.224, 0.225]
+    real_mean: [0.485, 0.456, 0.406]
+    real_std: [0.229, 0.224, 0.225]
+
+  pretrain_content_loss: null

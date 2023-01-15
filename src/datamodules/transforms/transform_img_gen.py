@@ -10,12 +10,12 @@ def get_transform(load_size, fine_size, is_train, apply_strong=True, mean=(0.5, 
         pre_process = [
             A.SmallestMaxSize(load_size, always_apply=True, interpolation=cv2.INTER_CUBIC),
             A.HorizontalFlip(p=0.5),
-            A.CenterCrop(fine_size, fine_size, always_apply=True),
+            A.RandomCrop(fine_size, fine_size, always_apply=True),
         ]
     else:
         pre_process = [
             A.SmallestMaxSize(load_size, always_apply=True, interpolation=cv2.INTER_CUBIC),
-            A.CenterCrop(fine_size, fine_size, always_apply=True)]
+            A.CenterCrop(load_size, load_size, always_apply=True)]
 
     very_rare_prob = 0.05
     rare_prob = 0.1

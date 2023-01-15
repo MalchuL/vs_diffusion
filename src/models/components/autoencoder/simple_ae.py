@@ -4,17 +4,20 @@ import torch.nn as nn
 from src.models.components.autoencoder.abstract_autoencoder import AbstractAutoEncoder
 from src.models.components.layers.conv_layers import conv3x3
 from src.models.components.layers.res_block import ResnetBlock, Downsample, Upsample
+from src.models.components.utils.norm_layers import get_norm_layer
 
 
 class SimpleAutoEncoder(AbstractAutoEncoder):
-    def __init__(self, in_channels, ch, ch_mult=(1, 2, 4, 4), num_res_blocks=2,
+    def __init__(self, input_channels, ch, ch_mult=(1, 2, 4, 4), num_res_blocks=2,
                  dropout=0.0, resamp_with_conv=True,
-                 z_channels=4, double_z=True, norm_layer=nn.BatchNorm2d):
-        encoder = Encoder(in_channels=in_channels, ch=ch, ch_mult=ch_mult, num_res_blocks=num_res_blocks,
+                 z_channels=4, double_z=True, norm_name='batch'):
+
+        norm_layer = get_norm_layer(norm_name)
+        encoder = Encoder(in_channels=input_channels, ch=ch, ch_mult=ch_mult, num_res_blocks=num_res_blocks,
                           dropout=dropout,
                           resamp_with_conv=resamp_with_conv, z_channels=z_channels, double_z=double_z,
                           norm_layer=norm_layer)
-        decoder = Decoder(out_ch=in_channels, ch=ch, ch_mult=ch_mult, num_res_blocks=num_res_blocks,
+        decoder = Decoder(out_ch=input_channels, ch=ch, ch_mult=ch_mult, num_res_blocks=num_res_blocks,
                           dropout=dropout, resamp_with_conv=resamp_with_conv, z_channels=z_channels, give_pre_end=False,
                           norm_layer=norm_layer)
         self.double_z = double_z
