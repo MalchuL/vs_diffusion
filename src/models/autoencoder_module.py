@@ -180,7 +180,7 @@ class KlAutoEncoderModule(pl.LightningModule):
             self.requires_grad(self.autoencoder, True)
             self.requires_grad(self.netD, False)
 
-            fake, mean_logvar = self(real_small)
+            fake, mean_logvar = self(real_small, sample_posterior=True)
 
             loss_autoencoder = self.generator_loss(real_small, fake, mean_logvar, temp)
 
@@ -268,7 +268,7 @@ class KlAutoEncoderModule(pl.LightningModule):
         self.autoencoder.eval()
         real = batch['image']
 
-        fake_ema, _ = self(real)
+        fake_ema, _ = self(real, sample_posterior=False)
 
         # Compute metrics
         denormalized_cartoon = self.backward_mapping(real)
@@ -333,12 +333,6 @@ class KlAutoEncoderModule(pl.LightningModule):
         else:
             return (pred, None)
 
-    @staticmethod
-    def read_generator_output(pred):
-        if isinstance(pred, (tuple, list)):
-            return pred[0]
-        else:
-            pred
 
     def generator_loss(self, real, fake, mean_logvar, out=None):
         real = self.backward_mapping(real)
@@ -463,7 +457,7 @@ class KlAutoEncoderModule(pl.LightningModule):
         real_input.requires_grad = True
 
         batch_size = round(real_input.shape[0] // pl_batch_shrink)
-        gen_img, _ = self(real_input[:batch_size])
+        gen_img, _ = self(real_input[:batch_size], sample_posterior=True)
         pl_noise = torch.randn_like(gen_img) / math.sqrt(gen_img.shape[2] * gen_img.shape[3])
 
         pl_grads = torch.autograd.grad(outputs=[(gen_img * pl_noise).sum()], inputs=[real_input], create_graph=True,

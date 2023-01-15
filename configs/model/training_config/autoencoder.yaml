@@ -17,8 +17,8 @@ netD: # Discriminator model
 initialization:
   pretrain_checkpoint_autoencoder: ${pretrain_gen}  # If passed model loads model else init_autoencoder argument initialization
   init_autoencoder: # Initialization params for generator
-    init_type: normal
-    init_gain: 0.02
+    init_type: kaiming
+    init_gain: 0.0
   init_D: # Initialization params for discriminator
     init_type: normal
     init_gain: 0.02
@@ -40,7 +40,7 @@ optimizing:
   optimizers:
     optimizer_autoencoder: &optimizer_autoencoder
       _target_: torch.optim.Adam
-      lr: &lr 0.0001
+      lr: &lr 0.0002
       betas: [ 0.5, 0.9 ]
     optimizer_D: *optimizer_autoencoder
 
