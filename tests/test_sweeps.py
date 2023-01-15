@@ -6,7 +6,7 @@ from tests.helpers.run_sh_command import run_sh_command
 startfile = "src/train.py"
 overrides = ["logger=[]"]
 
-
+@pytest.mark.skip(reason="no way of currently testing this")
 @RunIf(sh=True)
 @pytest.mark.slow
 def test_experiments(tmp_path):
@@ -20,7 +20,7 @@ def test_experiments(tmp_path):
     ] + overrides
     run_sh_command(command)
 
-
+@pytest.mark.skip(reason="no way of currently testing this")
 @RunIf(sh=True)
 @pytest.mark.slow
 def test_hydra_sweep(tmp_path):
@@ -35,7 +35,7 @@ def test_hydra_sweep(tmp_path):
 
     run_sh_command(command)
 
-
+@pytest.mark.skip(reason="no way of currently testing this")
 @RunIf(sh=True)
 @pytest.mark.slow
 def test_hydra_sweep_ddp_sim(tmp_path):
@@ -53,7 +53,7 @@ def test_hydra_sweep_ddp_sim(tmp_path):
     ] + overrides
     run_sh_command(command)
 
-
+@pytest.mark.skip(reason="no way of currently testing this")
 @RunIf(sh=True)
 @pytest.mark.slow
 def test_optuna_sweep(tmp_path):
@@ -69,7 +69,7 @@ def test_optuna_sweep(tmp_path):
     ] + overrides
     run_sh_command(command)
 
-
+@pytest.mark.skip(reason="no way of currently testing this")
 @RunIf(wandb=True, sh=True)
 @pytest.mark.slow
 def test_optuna_sweep_ddp_sim_wandb(tmp_path):

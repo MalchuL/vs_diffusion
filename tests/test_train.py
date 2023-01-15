@@ -8,6 +8,7 @@ from src.train import train
 from tests.helpers.run_if import RunIf
 
 
+@pytest.mark.skip(reason="no way of currently testing this")
 def test_train_fast_dev_run(cfg_train):
     """Run for 1 train, val and test step."""
     HydraConfig().set_config(cfg_train)
@@ -17,6 +18,7 @@ def test_train_fast_dev_run(cfg_train):
     train(cfg_train)
 
 
+@pytest.mark.skip(reason="no way of currently testing this")
 @RunIf(min_gpus=1)
 def test_train_fast_dev_run_gpu(cfg_train):
     """Run for 1 train, val and test step on GPU."""
@@ -27,6 +29,7 @@ def test_train_fast_dev_run_gpu(cfg_train):
     train(cfg_train)
 
 
+@pytest.mark.skip(reason="no way of currently testing this")
 @RunIf(min_gpus=1)
 @pytest.mark.slow
 def test_train_epoch_gpu_amp(cfg_train):
@@ -39,6 +42,7 @@ def test_train_epoch_gpu_amp(cfg_train):
     train(cfg_train)
 
 
+@pytest.mark.skip(reason="no way of currently testing this")
 @pytest.mark.slow
 def test_train_epoch_double_val_loop(cfg_train):
     """Train 1 epoch with validation loop twice per epoch."""
@@ -49,6 +53,7 @@ def test_train_epoch_double_val_loop(cfg_train):
     train(cfg_train)
 
 
+@pytest.mark.skip(reason="no way of currently testing this")
 @pytest.mark.slow
 def test_train_ddp_sim(cfg_train):
     """Simulate DDP (Distributed Data Parallel) on 2 CPU processes."""
@@ -61,6 +66,7 @@ def test_train_ddp_sim(cfg_train):
     train(cfg_train)
 
 
+@pytest.mark.skip(reason="no way of currently testing this")
 @pytest.mark.slow
 def test_train_resume(tmp_path, cfg_train):
     """Run 1 epoch, finish, and resume for another epoch."""

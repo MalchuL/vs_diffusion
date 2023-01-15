@@ -18,7 +18,7 @@ model_config:
     pool_name: max
     apply_tanh: False
 
-  img_size: 256  # Saved only for additional use
+  img_size: 128  # Saved only for additional use
 
   norm:
     mean: [ 0.5, 0.5, 0.5 ]

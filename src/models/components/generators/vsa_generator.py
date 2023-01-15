@@ -4,6 +4,7 @@ from typing import List, Optional
 import torch
 from torch import nn
 
+from src.models.components.layers.conv_layers import conv3x3
 from src.models.components.layers.coordconv import AddCoords
 from src.models.components.utils.norm_layers import get_norm_layer
 from src.models.components.utils.pool_layers import get_pool_layer
@@ -15,29 +16,6 @@ NEG_SLOPE = 0.1
 MAIN_ACTIVATION = lambda: nn.LeakyReLU(negative_slope=NEG_SLOPE, inplace=True)
 CONCAT_CHANNELS = True
 CONV_UPSAMPLE = True
-
-
-def conv3x3(in_planes, out_planes, stride=1, bias=BIAS, use_padding=True, groups=1):
-    "3x3 convolution with padding"
-    conv = nn.Conv2d(in_planes,
-                     out_planes,
-                     kernel_size=3,
-                     stride=stride,
-                     padding=1 if use_padding else 0,
-                     bias=bias,
-                     padding_mode=PADDING_MODE,
-                     groups=groups)
-    return conv
-
-
-def conv1x1(in_planes, out_planes, bias=BIAS, groups=1):
-    "1x1 convolution with padding"
-    conv = nn.Conv2d(in_planes,
-                     out_planes,
-                     kernel_size=1,
-                     groups=groups,
-                     bias=bias)
-    return conv
 
 
 class ConvBNRelu(nn.Module):
