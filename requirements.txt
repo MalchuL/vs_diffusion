@@ -7,7 +7,7 @@ segmentation_models_pytorch
 
 # --------- misc ------------- #
 opencv-python==4.5.5.64
-opencv-contrib-python==4.5.5.64
+opencv-contrib-python==4.7.0.68
 opencv-python-headless==4.5.5.64
 albumentations==1.2.1
 pytweening==1.0.4
